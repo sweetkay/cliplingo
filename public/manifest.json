@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "ClipLingo",
+  "version": "0.1.0",
+  "description": "把字幕视频中的真实语句和原声保存为可复习的英语学习卡片。",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "scripting",
+    "tabCapture",
+    "offscreen",
+    "commands"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "assets/background.js", "type": "module" },
+  "action": { "default_popup": "src/popup/index.html", "default_title": "ClipLingo" },
+  "options_page": "src/options/index.html",
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["assets/content.js"],
+    "run_at": "document_idle"
+  }],
+  "commands": {
+    "save-current": { "suggested_key": { "default": "Alt+S" }, "description": "收藏当前语句" },
+    "toggle-loop": { "suggested_key": { "default": "Alt+R" }, "description": "切换单句循环" },
+    "toggle-overlay": { "suggested_key": { "default": "Alt+H" }, "description": "显示或隐藏字幕层" }
+  }
+}
