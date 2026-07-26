@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ClipLingo",
-  "version": "0.1.0",
-  "description": "把字幕视频中的真实语句和原声保存为可复习的英语学习卡片。",
+  "version": "0.2.0",
+  "description": "从字幕视频收藏真实语句，用 MiniMax 示范发音、跟读评分和口语教练高效学习英语。",
   "permissions": [
     "storage",
     "unlimitedStorage",

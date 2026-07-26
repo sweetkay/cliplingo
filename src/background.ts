@@ -1,5 +1,6 @@
 import { loadSettings } from './shared/settings';
 import { getSentences, putSentence } from './shared/db';
+import type { ScoreResult } from './shared/types';
 
 type RuntimeMessage = { type: string; [key: string]: unknown };
 
@@ -30,9 +31,11 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       await putSentence(sentence);
       return { ok: true, duplicate: false };
     }
-    case 'AI_TRANSLATE': return chat(`Translate each subtitle into Simplified Chinese. Return only a JSON array of strings in the same order.\n\n${JSON.stringify(message.texts)}`);
-    case 'AI_WORD': return chat(`Explain the English word ${JSON.stringify(message.word)} in this context: ${JSON.stringify(message.context)}. Return concise JSON with keys lemma, partOfSpeech, phonetic, meaning, usage.`);
-    case 'AI_EXPLAIN': return chat(`Explain this English sentence to a Chinese learner. Return concise JSON with keys translation, structure, phrases, tone, alternatives, examples. Sentence: ${JSON.stringify(message.text)}`);
+    case 'AI_TRANSLATE': return chat(`Translate each English subtitle into natural Simplified Chinese. Return only a JSON array of strings in the same order.\n\n${JSON.stringify(message.texts)}`);
+    case 'AI_WORD': return chat(`Explain the English word ${JSON.stringify(message.word)} in this context: ${JSON.stringify(message.context)}. Return concise JSON with keys lemma, partOfSpeech, phonetic, meaning, usage.`, '你是面向中文母语者的英语学习助手，只返回有效 JSON。');
+    case 'AI_EXPLAIN': return chat(`Explain this English sentence to a Chinese learner. Return concise JSON with keys translation, structure, phrases, tone, alternatives, examples. Sentence: ${JSON.stringify(message.text)}`, '你是面向中文母语者的英语学习助手，只返回有效 JSON。');
+    case 'MINIMAX_TTS': return synthesize(String(message.text || ''));
+    case 'COACH_SPEECH': return coachSpeech(String(message.text || ''), message.score as ScoreResult);
     case 'GET_TAB_STATUS': return (await chrome.storage.session.get(`tab:${message.tabId}`))[`tab:${message.tabId}`] || { active: false };
     case 'SET_TAB_STATUS': {
       const tabId = Number(message.tabId || sender.tab?.id);
@@ -62,7 +65,7 @@ async function relayOffscreen(message: RuntimeMessage) {
   return chrome.runtime.sendMessage({ ...message, target: 'offscreen' });
 }
 
-async function chat(userContent: string) {
+async function chat(userContent: string, systemContent?: string) {
   const settings = await loadSettings();
   if (!settings.apiKey) throw new Error('请先在设置中配置大模型 API Key');
   const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -71,10 +74,56 @@ async function chat(userContent: string) {
     body: JSON.stringify({
       model: settings.model,
       temperature: 0.2,
-      messages: [{ role: 'system', content: settings.translationPrompt }, { role: 'user', content: userContent }]
+      messages: [{ role: 'system', content: systemContent || settings.translationPrompt }, { role: 'user', content: userContent }]
     })
   });
   if (!response.ok) throw new Error(`API 请求失败 (${response.status})`);
   const json = await response.json();
   return { ok: true, content: json.choices?.[0]?.message?.content || '' };
+}
+
+async function synthesize(text: string) {
+  const settings = await loadSettings();
+  if (!settings.apiKey) throw new Error('请先在设置中配置 MiniMax API Key');
+  if (!text.trim()) throw new Error('当前没有可生成的台词');
+  const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/t2a_v2`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${settings.apiKey}` },
+    body: JSON.stringify({
+      model: settings.speechModel,
+      text,
+      stream: false,
+      voice_setting: {
+        voice_id: settings.speechVoiceId,
+        speed: settings.speechSpeed,
+        vol: 1,
+        pitch: 0,
+        emotion: settings.speechEmotion
+      },
+      audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3', channel: 1 },
+      language_boost: 'English',
+      subtitle_enable: false
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json.base_resp?.status_code) throw new Error(json.base_resp?.status_msg || `MiniMax 语音请求失败 (${response.status})`);
+  const hex = json.data?.audio;
+  if (!hex) throw new Error('MiniMax 没有返回音频');
+  return { ok: true, audio: `data:audio/mpeg;base64,${hexToBase64(hex)}`, duration: json.extra_info?.audio_length || 0 };
+}
+
+async function coachSpeech(text: string, score: ScoreResult) {
+  const prompt = `你是严谨、鼓励型的英语口语教练。根据目标台词和本地跟读评测，用简体中文给出简短反馈。
+目标台词：${JSON.stringify(text)}
+识别结果：${JSON.stringify(score?.spokenText || '')}
+分数：${JSON.stringify(score)}
+只返回 JSON，字段为 summary（1句话）、strengths（字符串数组，最多2项）、improvements（字符串数组，最多3项）、practice（1条可以立刻执行的练习指令）。不要声称听到了录音，也不要给出无法从数据判断的音素结论。`;
+  return chat(prompt, '你是严谨、具体、鼓励型的英语口语教练，只返回有效 JSON。');
+}
+
+function hexToBase64(hex: string) {
+  const bytes = new Uint8Array(hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
