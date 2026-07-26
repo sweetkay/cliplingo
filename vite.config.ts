@@ -16,8 +16,7 @@ export default defineConfig({
         library: resolve(root, 'src/library/index.html'),
         options: resolve(root, 'src/options/index.html'),
         offscreen: resolve(root, 'src/offscreen/index.html'),
-        background: resolve(root, 'src/background.ts'),
-        content: resolve(root, 'src/content.ts')
+        background: resolve(root, 'src/background.ts')
       },
       output: {
         entryFileNames: 'assets/[name].js',
