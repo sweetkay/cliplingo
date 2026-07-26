@@ -178,7 +178,7 @@ function render(score?: ScoreResult, error = '') {
     <div class="translation">${cue ? escapeHtml(translated.get(cue.text) || '正在翻译…') : '请播放带字幕的视频'}</div>
     <div class="tools">
       <button data-action="loop" class="${loop ? 'active' : ''}">↻ ${loop ? '循环中' : '单句循环'}</button>
-      <button data-action="save">＋ 收藏</button><button data-action="tts">▶ AI示范</button><button data-action="speak">◉ 跟读</button><button data-action="explain">✦ AI讲解</button>
+      <button data-action="save">＋ 收藏</button><button data-action="tts">▶ AI示范</button><button data-action="speak">◉ 跟读评分</button>
       <select data-action="rate"><option>.5×</option><option>.75×</option><option selected>1×</option><option>1.25×</option></select>
       <button data-action="close">×</button>
     </div>
@@ -200,7 +200,6 @@ async function handleAction(action: string) {
   if (action === 'tts') await playAiExample();
   if (action === 'speak') await startSpeaking();
   if (action === 'coach' && currentCue && latestScore) await requestCoach(currentCue.text, latestScore);
-  if (action === 'explain') await explainCurrent();
   if (action === 'close') stopLearning();
 }
 
@@ -237,18 +236,6 @@ async function lookupWord(word: string) {
     card.innerHTML = `<button class="x">×</button><h3>${escapeHtml(data.lemma || word)} <small>${escapeHtml(data.phonetic || '')}</small></h3><em>${escapeHtml(data.partOfSpeech || '')}</em><p>${escapeHtml(data.meaning || '')}</p><p class="muted">${escapeHtml(data.usage || '')}</p>`;
     card.querySelector('.x')?.addEventListener('click', () => card.classList.remove('show'));
   } catch (e) { card.innerHTML = `<p>查询失败：${escapeHtml(String((e as Error).message || e))}</p>`; }
-}
-
-async function explainCurrent() {
-  if (!currentCue) return;
-  toast('正在生成讲解…');
-  try {
-    const response = await chrome.runtime.sendMessage({ type: 'AI_EXPLAIN', text: currentCue.text });
-    const raw = response.content.replace(/^```json\s*|\s*```$/g, '');
-    const data = JSON.parse(raw);
-    const box = shadow?.querySelector<HTMLElement>('.result');
-    if (box) { box.classList.add('show'); box.innerHTML = `<b>${escapeHtml(data.translation || '')}</b><p>${escapeHtml(data.structure || '')}</p><p>${escapeHtml(String(data.phrases || ''))}</p><p class="muted">${escapeHtml(data.tone || '')}</p>`; }
-  } catch (e) { toast(`讲解失败：${String((e as Error).message || e)}`); }
 }
 
 async function playAiExample() {

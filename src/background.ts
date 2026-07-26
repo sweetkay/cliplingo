@@ -31,10 +31,11 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       await putSentence(sentence);
       return { ok: true, duplicate: false };
     }
-    case 'AI_TRANSLATE': return chat(`Translate each English subtitle into natural Simplified Chinese. Return only a JSON array of strings in the same order.\n\n${JSON.stringify(message.texts)}`);
+    case 'AI_TRANSLATE': return translateSubtitles(message.texts as string[]);
     case 'AI_WORD': return chat(`Explain the English word ${JSON.stringify(message.word)} in this context: ${JSON.stringify(message.context)}. Return concise JSON with keys lemma, partOfSpeech, phonetic, meaning, usage.`, '你是面向中文母语者的英语学习助手，只返回有效 JSON。');
-    case 'AI_EXPLAIN': return chat(`Explain this English sentence to a Chinese learner. Return concise JSON with keys translation, structure, phrases, tone, alternatives, examples. Sentence: ${JSON.stringify(message.text)}`, '你是面向中文母语者的英语学习助手，只返回有效 JSON。');
+    case 'TEST_MINIMAX_TEXT': return chat('只回复 OK。', '你正在测试 API 连接。');
     case 'MINIMAX_TTS': return synthesize(String(message.text || ''));
+    case 'GET_MINIMAX_VOICES': return getMiniMaxVoices();
     case 'COACH_SPEECH': return coachSpeech(String(message.text || ''), message.score as ScoreResult);
     case 'GET_TAB_STATUS': return (await chrome.storage.session.get(`tab:${message.tabId}`))[`tab:${message.tabId}`] || { active: false };
     case 'SET_TAB_STATUS': {
@@ -65,14 +66,14 @@ async function relayOffscreen(message: RuntimeMessage) {
   return chrome.runtime.sendMessage({ ...message, target: 'offscreen' });
 }
 
-async function chat(userContent: string, systemContent?: string) {
+async function chat(userContent: string, systemContent?: string, model?: string) {
   const settings = await loadSettings();
   if (!settings.apiKey) throw new Error('请先在设置中配置大模型 API Key');
   const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${settings.apiKey}` },
     body: JSON.stringify({
-      model: settings.model,
+      model: model || settings.model,
       temperature: 0.2,
       messages: [{ role: 'system', content: systemContent || settings.translationPrompt }, { role: 'user', content: userContent }]
     })
@@ -80,6 +81,33 @@ async function chat(userContent: string, systemContent?: string) {
   if (!response.ok) throw new Error(`API 请求失败 (${response.status})`);
   const json = await response.json();
   return { ok: true, content: json.choices?.[0]?.message?.content || '' };
+}
+
+async function translateSubtitles(texts: string[]) {
+  const settings = await loadSettings();
+  return chat(
+    `Translate each English subtitle into natural Simplified Chinese. Return only a JSON array of strings in the same order.\n\n${JSON.stringify(texts)}`,
+    settings.translationPrompt,
+    settings.translationModel
+  );
+}
+
+async function getMiniMaxVoices() {
+  const settings = await loadSettings();
+  if (!settings.apiKey) throw new Error('请先在设置中配置 MiniMax API Key');
+  const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/get_voice`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${settings.apiKey}` },
+    body: JSON.stringify({ voice_type: 'all' })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json.base_resp?.status_code) throw new Error(json.base_resp?.status_msg || `读取 Voice ID 失败 (${response.status})`);
+  const voices = [
+    ...(json.system_voice || []).map((voice: Record<string, unknown>) => ({ ...voice, type: 'system' })),
+    ...(json.voice_cloning || []).map((voice: Record<string, unknown>) => ({ ...voice, type: 'voice_cloning' })),
+    ...(json.voice_generation || []).map((voice: Record<string, unknown>) => ({ ...voice, type: 'voice_generation' }))
+  ];
+  return { ok: true, voices };
 }
 
 async function synthesize(text: string) {
