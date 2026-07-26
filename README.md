@@ -1,44 +1,65 @@
 # ClipLingo
 
-ClipLingo 是一个面向个人使用的 Chrome / Edge 英语视频学习插件。它能识别网页视频字幕，显示双语字幕，保存当前语句及对应原声，并在本地语句库中提供循环播放、查词、AI 讲解和基础跟读评分。
+ClipLingo 是一款面向个人使用的 Chrome / Edge 英语视频学习插件。它能识别网页视频字幕、显示双语翻译、保存当前语句及原声，并提供 MiniMax AI 示范音、跟读评分、口语教练和本地语句库。
 
 ## 安装
 
-1. 运行 `npm install` 和 `npm run build`。
-2. 打开 `chrome://extensions` 或 `edge://extensions`。
-3. 开启“开发者模式”。
-4. 点击“加载已解压的扩展程序”，选择项目中的 `dist` 文件夹。
-5. 打开 YouTube、Bilibili 或带 HTML5 字幕的视频页面。
-6. 点击 ClipLingo 图标，再点击“开始学习”。
+1. 在 GitHub Releases 下载最新的 `ClipLingo-v0.2.0-install.zip`。
+2. 解压 ZIP。
+3. Chrome 打开 `chrome://extensions`，Edge 打开 `edge://extensions`。
+4. 开启“开发者模式”。
+5. 点击“加载已解压的扩展程序”，选择解压后的文件夹。
+6. 刷新已经打开的视频网页。
 
-## API 配置
+详细步骤见 [public/INSTALL.md](public/INSTALL.md)。
 
-打开插件设置，填写 OpenAI-compatible API 的 Base URL、API Key 与模型名称。API Key 仅保存在浏览器本地，不包含在语句库导出文件中。
+## 配置 MiniMax
 
-## MVP 功能
+打开插件设置，填写 MiniMax 开放平台 API Key。默认配置：
 
-- YouTube、Bilibili、HTML5 TextTrack 与通用 DOM 字幕识别
-- 双语字幕悬浮层
-- 单句循环、速度控制与快捷键
-- 标签页原声音频缓冲与语句切片
-- 音频失败时自动降级为在线回放
-- 本地 IndexedDB 语句库
-- AI 翻译、语境查词与句子讲解
-- Chrome 语音识别驱动的基础跟读评分
-- 完整 JSON 备份与恢复
+- API Base URL：`https://api.minimaxi.com/v1`
+- 口语教练：`MiniMax-M3`
+- AI 示范音：`speech-2.8-turbo`
+- 英语音色：`English_Graceful_Lady`
+- 翻译：Chrome 本地翻译，失败时回退到 MiniMax
 
-## 已知限制
+同一个 Key 用于示范音、口语教练、查词和句子讲解，只保存在浏览器本地。
 
-- DRM 保护的视频可能无法捕获音频。
-- 使用自绘字幕或画面硬字幕的网站需要额外适配器；MVP 不包含 OCR。
-- YouTube/Bilibili 的页面结构可能调整，届时需要更新字幕选择器。
-- 基础跟读评分衡量文本准确度、完整度和相对语速，不是音素级发音评价。
-- Chrome 快捷键可能与操作系统或网站快捷键冲突，可在 `chrome://extensions/shortcuts` 修改。
+## v0.2 功能
+
+- 通用 HTML5、YouTube、Bilibili 字幕识别
+- Chrome 端侧翻译与 MiniMax 回退
+- 双语悬浮字幕
+- 单句循环、倍速播放和原声收藏
+- MiniMax Speech 2.8 AI 示范发音
+- 支持系统 Voice ID 和自定义复刻 Voice ID
+- 点击查词和 AI 句子讲解
+- Chrome 语音识别
+- 本地准确度、完整度、流利度、节奏和语调评分
+- MiniMax-M3 中文口语教练反馈
+- IndexedDB 本地语句库和 JSON 备份
+
+## 隐私
+
+- 收藏语句、原声音频、设置和 API Key 保存在浏览器本地。
+- 生成示范音时，当前台词会发送给 MiniMax。
+- 生成教练反馈时，仅发送目标台词、Chrome 识别文字及本地统计分数。
+- 麦克风只在点击“跟读”后启用；录音不保存，也不会上传到 MiniMax。
+- 插件不会上传完整视频。
 
 ## 开发
 
 ```bash
-npm run test
-npm run build
+npm install
 npm run check
 ```
+
+构建产物位于 `dist/`。
+
+## 已知限制
+
+- Chrome 端侧 Translator API 需要较新的桌面版 Chrome，并可能首次下载语言包。
+- Chrome 语音识别的可用性受浏览器、地区和网络环境影响。
+- 本地语调分数用于练习反馈，不是音素级专业考试评分。
+- 不同视频网站的自绘字幕可能需要额外适配。
+- 自定义人物音色需先在 MiniMax 创建 Voice ID，并确保拥有声音使用授权。
