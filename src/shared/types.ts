@@ -30,6 +30,7 @@ export interface Settings {
   speechSpeed: number;
   speechEmotion: string;
   translationMode: 'chrome-fallback-minimax' | 'minimax' | 'off';
+  translationModel: string;
   autoCoach: boolean;
   targetLanguage: string;
   fontSize: number;
@@ -43,12 +44,13 @@ export interface Settings {
 export const defaultSettings: Settings = {
   apiBaseUrl: 'https://api.minimaxi.com/v1',
   apiKey: '',
-  model: 'MiniMax-M3',
+  model: 'MiniMax-M2.7',
   speechModel: 'speech-2.8-turbo',
   speechVoiceId: 'English_Graceful_Lady',
   speechSpeed: 0.9,
   speechEmotion: 'neutral',
   translationMode: 'chrome-fallback-minimax',
+  translationModel: 'MiniMax-M2.7-highspeed',
   autoCoach: true,
   targetLanguage: '简体中文',
   fontSize: 22,
