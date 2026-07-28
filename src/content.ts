@@ -1,7 +1,16 @@
 import { scoreSpeech } from './shared/scoring';
+import {
+  cleanSubtitle,
+  completeSentence,
+  isChineseTrack,
+  isEnglishTrack,
+  splitBilingualLines,
+  type TextCueLike
+} from './shared/subtitles';
 import { defaultSettings, type ScoreResult, type Settings, type SpeechMetrics } from './shared/types';
 
-interface CueData { id: string; text: string; start: number; end: number; }
+interface CueData { id: string; text: string; start: number; end: number; nativeTranslation?: string; }
+interface TimedTextCue extends TextCueLike {}
 
 interface SpeechRecognitionLike {
   lang: string; interimResults: boolean; continuous: boolean;
@@ -23,6 +32,7 @@ let loop = false;
 let overlayHost: HTMLDivElement | null = null;
 let shadow: ShadowRoot | null = null;
 let translated = new Map<string, string>();
+let translationSource = new Map<string, 'site' | 'chrome' | 'minimax'>();
 let loopIteration = 0;
 let lastText = '';
 let timer: number | null = null;
@@ -31,6 +41,7 @@ let coachFeedback = '';
 let resultError = '';
 let generatedAudio: HTMLAudioElement | null = null;
 const ttsCache = new Map<string, string>();
+let youtubeTranslationCache: { key: string; cues: TimedTextCue[] } | null = null;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   void (async () => {
@@ -46,6 +57,7 @@ async function startLearning() {
   settings = await loadSettings();
   video = findVideo();
   if (!video) throw new Error('当前页面没有检测到视频');
+  prepareNativeTranslationTracks();
   active = true;
   createOverlay();
   video.addEventListener('timeupdate', onTimeUpdate);
@@ -67,35 +79,82 @@ function findVideo() {
 
 function getCue(): CueData | null {
   if (!video) return null;
-  for (const track of Array.from(video.textTracks || [])) {
-    const cue = track.activeCues?.[0] as VTTCue | undefined;
-    if (cue?.text) return { id: `${cue.startTime}-${cue.endTime}-${cue.text}`, text: clean(cue.text), start: cue.startTime, end: cue.endTime };
+  const tracks = Array.from(video.textTracks || []);
+  const activeTracks = tracks
+    .map(track => ({ track, cue: completeActiveTrackCue(track) }))
+    .filter((item): item is { track: TextTrack; cue: CueData } => Boolean(item.cue));
+  const sourceTrack = activeTracks.find(({ track }) => isEnglishTrack(track.language, track.label))
+    || activeTracks.find(({ track }) => !isChineseTrack(track.language, track.label));
+  if (sourceTrack) {
+    const chineseTrack = activeTracks.find(({ track }) => isChineseTrack(track.language, track.label));
+    return {
+      ...sourceTrack.cue,
+      nativeTranslation: chineseTrack?.cue.text
+    };
   }
+
   const selectors = [
     '.ytp-caption-segment', '.bpx-player-subtitle-panel-text', '.bilibili-player-video-subtitle-item',
     '[class*="subtitle"] [class*="text"]', '[class*="caption"] [class*="text"]'
   ];
   for (const selector of selectors) {
     const nodes = [...document.querySelectorAll<HTMLElement>(selector)].filter(el => isVisible(el));
-    const text = clean(nodes.map(node => node.innerText).join(' '));
-    if (text && text.length < 500) {
+    const lines = nodes.map(node => node.innerText);
+    const bilingual = splitBilingualLines(lines);
+    if (bilingual.source && bilingual.source.length < 500) {
       const now = video.currentTime;
-      return { id: `${Math.floor(now * 2)}-${text}`, text, start: Math.max(0, now - .5), end: now + 3.5 };
+      return {
+        id: `${Math.floor(now * 2)}-${bilingual.source}`,
+        text: bilingual.source,
+        start: Math.max(0, now - .5),
+        end: now + 3.5,
+        nativeTranslation: bilingual.chinese || undefined
+      };
     }
   }
   return null;
 }
 
-function clean(text: string) { return text.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); }
 function isVisible(el: HTMLElement) { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; }
+
+function prepareNativeTranslationTracks() {
+  if (!video) return;
+  for (const track of Array.from(video.textTracks || [])) {
+    if (isChineseTrack(track.language, track.label) && track.mode === 'disabled') track.mode = 'hidden';
+  }
+}
+
+function completeActiveTrackCue(track: TextTrack): CueData | null {
+  const active = track.activeCues?.[0] as VTTCue | undefined;
+  if (!active?.text) return null;
+  const cues = Array.from(track.cues || []) as VTTCue[];
+  const index = cues.findIndex(cue => cue === active || Math.abs(cue.startTime - active.startTime) < .01);
+  const complete = index >= 0 ? completeSentence(cues, index) : {
+    text: cleanSubtitle(active.text),
+    start: active.startTime,
+    end: active.endTime
+  };
+  return {
+    id: `${complete.start}-${complete.end}-${complete.text}`,
+    text: complete.text,
+    start: complete.start,
+    end: complete.end
+  };
+}
 
 function tick() {
   if (!active || !video) return;
+  prepareNativeTranslationTracks();
   const cue = getCue();
   if (cue && cue.text !== lastText) {
     currentCue = cue; lastText = cue.text; loopIteration = 0;
     latestScore = null; coachFeedback = ''; resultError = '';
     render(); void translate(cue);
+  } else if (cue?.nativeTranslation && translationSource.get(cue.text) !== 'site') {
+    translated.set(cue.text, cue.nativeTranslation);
+    translationSource.set(cue.text, 'site');
+    if (currentCue) currentCue.nativeTranslation = cue.nativeTranslation;
+    render();
   }
   onTimeUpdate();
 }
@@ -114,13 +173,23 @@ async function translate(cue: CueData) {
   if (translated.has(cue.text)) return render();
   if (settings.translationMode === 'off') { translated.set(cue.text, '翻译已关闭'); return render(); }
   try {
-    const texts = translationBatch(cue);
-    let results: string[];
-    if (settings.translationMode === 'chrome-fallback-minimax') {
-      try { results = await translateOnDevice(texts); }
-      catch { results = await translateWithMiniMax(texts); }
-    } else results = await translateWithMiniMax(texts);
-    texts.forEach((text, index) => translated.set(text, results[index] || ''));
+    let siteTranslation = cue.nativeTranslation || '';
+    if (!siteTranslation) {
+      try { siteTranslation = await getYouTubeNativeTranslation(cue); }
+      catch { /* The webpage track is optional; Chrome translation remains available. */ }
+    }
+    if (siteTranslation) {
+      translated.set(cue.text, siteTranslation);
+      translationSource.set(cue.text, 'site');
+    } else if (settings.translationMode === 'site-chrome') {
+      const [result] = await translateOnDevice([cue.text]);
+      translated.set(cue.text, result || '');
+      translationSource.set(cue.text, 'chrome');
+    } else {
+      const [result] = await translateWithMiniMax([cue.text]);
+      translated.set(cue.text, result || '');
+      translationSource.set(cue.text, 'minimax');
+    }
   } catch (error) { translated.set(cue.text, `翻译不可用 · ${String((error as Error).message || error)}`); }
   render();
 }
@@ -148,14 +217,55 @@ async function translateWithMiniMax(texts: string[]) {
   try { return JSON.parse(raw) as string[]; } catch { return [raw]; }
 }
 
-function translationBatch(cue: CueData) {
-  if (!video) return [cue.text];
-  for (const track of Array.from(video.textTracks || [])) {
-    const cues = Array.from(track.cues || []) as VTTCue[];
-    const index = cues.findIndex(item => Math.abs(item.startTime - cue.start) < .05 || clean(item.text) === cue.text);
-    if (index >= 0) return [...new Set(cues.slice(index, index + 12).map(item => clean(item.text)).filter(Boolean))];
+async function getYouTubeNativeTranslation(cue: CueData) {
+  if (!/(^|\.)youtube\.com$/.test(location.hostname)) return '';
+  const resourceUrl = [...performance.getEntriesByType('resource')]
+    .map(entry => entry.name)
+    .reverse()
+    .find(name => name.includes('/api/timedtext?') || name.includes('/timedtext?'));
+  if (!resourceUrl) return '';
+
+  const url = new URL(resourceUrl);
+  url.searchParams.set('tlang', 'zh-Hans');
+  url.searchParams.set('fmt', 'json3');
+  const key = url.toString();
+  if (youtubeTranslationCache?.key !== key) {
+    const response = await fetch(key, { credentials: 'include' });
+    if (!response.ok) throw new Error(`网页中文字幕读取失败 (${response.status})`);
+    youtubeTranslationCache = { key, cues: parseYouTubeTimedText(await response.text()) };
   }
-  return [cue.text];
+  const matches = youtubeTranslationCache.cues.filter(item =>
+    item.endTime >= cue.start - .35 && item.startTime <= cue.end + .35
+  );
+  return completeSentence(matches, Math.max(0, matches.findIndex(item =>
+    item.startTime <= (cue.start + cue.end) / 2 && item.endTime >= (cue.start + cue.end) / 2
+  ))).text;
+}
+
+function parseYouTubeTimedText(raw: string): TimedTextCue[] {
+  try {
+    const data = JSON.parse(raw) as {
+      events?: Array<{ tStartMs?: number; dDurationMs?: number; segs?: Array<{ utf8?: string }> }>;
+    };
+    return (data.events || []).map(event => {
+      const startTime = (event.tStartMs || 0) / 1000;
+      return {
+        text: cleanSubtitle((event.segs || []).map(segment => segment.utf8 || '').join('')),
+        startTime,
+        endTime: startTime + (event.dDurationMs || 0) / 1000
+      };
+    }).filter(cue => Boolean(cue.text));
+  } catch {
+    const document = new DOMParser().parseFromString(raw, 'text/xml');
+    return [...document.querySelectorAll('text')].map(node => {
+      const startTime = Number(node.getAttribute('start') || 0);
+      return {
+        text: cleanSubtitle(node.textContent || ''),
+        startTime,
+        endTime: startTime + Number(node.getAttribute('dur') || 0)
+      };
+    }).filter(cue => Boolean(cue.text));
+  }
 }
 
 function createOverlay() {

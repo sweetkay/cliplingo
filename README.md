@@ -21,14 +21,16 @@ ClipLingo 是一款面向个人使用的 Chrome / Edge 英语视频学习插件�
 - 口语教练：`MiniMax-M2.7`
 - AI 示范音：`speech-2.8-turbo`
 - 英语音色：`English_Graceful_Lady`
-- 翻译：Chrome 本地翻译，失败时回退到 MiniMax
+- 翻译：网页自带中文字幕优先，缺失时使用 Chrome 本地翻译
 
 同一个 Key 用于示范音、口语教练、查词和字幕翻译，只保存在浏览器本地。
 
-## v0.3 功能
+## v0.4 功能
 
 - 通用 HTML5、YouTube、Bilibili 字幕识别
-- Chrome 端侧翻译与 MiniMax 回退
+- 优先读取网页中文轨道、双语字幕和 YouTube 官方中文字幕
+- 将相邻字幕片段合并成完整语句，再交给 Chrome 端侧翻译
+- 默认翻译链路不调用外部模型 API；仍可在设置中手动选择 MiniMax
 - 双语悬浮字幕
 - 单句循环、倍速播放和原声收藏
 - MiniMax Speech 2.8 AI 示范发音
