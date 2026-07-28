@@ -41,6 +41,7 @@ let coachFeedback = '';
 let resultError = '';
 let generatedAudio: HTMLAudioElement | null = null;
 const ttsCache = new Map<string, string>();
+const wordTranslationCache = new Map<string, string>();
 let youtubeTranslationCache: { key: string; cues: TimedTextCue[] } | null = null;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -338,14 +339,23 @@ async function saveCurrent() {
 async function lookupWord(word: string) {
   const card = shadow?.querySelector<HTMLElement>('.wordcard');
   if (!card || !currentCue) return;
-  card.classList.add('show'); card.innerHTML = `<b>${escapeHtml(word)}</b><p>正在查询语境释义…</p>`;
+  const normalizedWord = word.toLowerCase().replace(/[’']/g, "'").trim();
+  card.classList.add('show');
+  card.innerHTML = `<button class="x">×</button><h3>${escapeHtml(word)}</h3><p>Chrome 本地词典正在翻译…</p>`;
+  card.querySelector('.x')?.addEventListener('click', () => card.classList.remove('show'));
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'AI_WORD', word, context: currentCue.text });
-    const raw = response.content.replace(/^```json\s*|\s*```$/g, '');
-    const data = JSON.parse(raw);
-    card.innerHTML = `<button class="x">×</button><h3>${escapeHtml(data.lemma || word)} <small>${escapeHtml(data.phonetic || '')}</small></h3><em>${escapeHtml(data.partOfSpeech || '')}</em><p>${escapeHtml(data.meaning || '')}</p><p class="muted">${escapeHtml(data.usage || '')}</p>`;
+    let meaning = wordTranslationCache.get(normalizedWord);
+    if (!meaning) {
+      [meaning] = await translateOnDevice([normalizedWord]);
+      if (!meaning) throw new Error('没有返回中文释义');
+      wordTranslationCache.set(normalizedWord, meaning);
+    }
+    card.innerHTML = `<button class="x">×</button><h3>${escapeHtml(word)}</h3><p>${escapeHtml(meaning)}</p><p class="muted">Chrome 本地词典 · 英译中</p>`;
     card.querySelector('.x')?.addEventListener('click', () => card.classList.remove('show'));
-  } catch (e) { card.innerHTML = `<p>查询失败：${escapeHtml(String((e as Error).message || e))}</p>`; }
+  } catch (error) {
+    card.innerHTML = `<button class="x">×</button><h3>${escapeHtml(word)}</h3><p>本地翻译不可用：${escapeHtml(String((error as Error).message || error))}</p><p class="muted">请使用 Chrome 138 或更高版本，并允许首次下载英译中语言包。</p>`;
+    card.querySelector('.x')?.addEventListener('click', () => card.classList.remove('show'));
+  }
 }
 
 async function playAiExample() {
