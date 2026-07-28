@@ -32,7 +32,6 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       return { ok: true, duplicate: false };
     }
     case 'AI_TRANSLATE': return translateSubtitles(message.texts as string[]);
-    case 'AI_WORD': return chat(`Explain the English word ${JSON.stringify(message.word)} in this context: ${JSON.stringify(message.context)}. Return concise JSON with keys lemma, partOfSpeech, phonetic, meaning, usage.`, '你是面向中文母语者的英语学习助手，只返回有效 JSON。');
     case 'TEST_MINIMAX_TEXT': return chat('只回复 OK。', '你正在测试 API 连接。');
     case 'MINIMAX_TTS': return synthesize(String(message.text || ''));
     case 'GET_MINIMAX_VOICES': return getMiniMaxVoices();
