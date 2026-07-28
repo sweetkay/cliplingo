@@ -23,7 +23,7 @@ ClipLingo 是一款面向个人使用的 Chrome / Edge 英语视频学习插件�
 - 英语音色：`English_Graceful_Lady`
 - 翻译：网页自带中文字幕优先，缺失时使用 Chrome 本地翻译
 
-同一个 Key 用于示范音、口语教练、查词和字幕翻译，只保存在浏览器本地。
+同一个 Key 用于示范音、口语教练和可选的 MiniMax 字幕翻译，只保存在浏览器本地。点击单词查义使用 Chrome 本地语言包，不需要 API Key。
 
 ## v0.4 功能
 
@@ -35,7 +35,7 @@ ClipLingo 是一款面向个人使用的 Chrome / Edge 英语视频学习插件�
 - 单句循环、倍速播放和原声收藏
 - MiniMax Speech 2.8 AI 示范发音
 - 可从 MiniMax 读取系统、复刻和文生音色 Voice ID
-- 点击查词
+- 点击单词使用 Chrome 本地语言包翻译
 - Chrome 语音识别
 - 本地准确度、完整度、流利度、节奏和语调评分
 - 可选 MiniMax 文本模型生成中文口语教练反馈
