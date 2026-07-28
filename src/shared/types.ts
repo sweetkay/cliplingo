@@ -29,7 +29,7 @@ export interface Settings {
   speechVoiceId: string;
   speechSpeed: number;
   speechEmotion: string;
-  translationMode: 'chrome-fallback-minimax' | 'minimax' | 'off';
+  translationMode: 'site-chrome' | 'minimax' | 'off';
   translationModel: string;
   autoCoach: boolean;
   targetLanguage: string;
@@ -49,7 +49,7 @@ export const defaultSettings: Settings = {
   speechVoiceId: 'English_Graceful_Lady',
   speechSpeed: 0.9,
   speechEmotion: 'neutral',
-  translationMode: 'chrome-fallback-minimax',
+  translationMode: 'site-chrome',
   translationModel: 'MiniMax-M2.7-highspeed',
   autoCoach: true,
   targetLanguage: '简体中文',
